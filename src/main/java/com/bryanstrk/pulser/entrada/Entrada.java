@@ -55,7 +55,8 @@ public class Entrada {
     private BigDecimal precio;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    @Column(nullable = false, length = 30)
     private EstadoEntrada estado;
 
     @Column(columnDefinition = "TEXT")
