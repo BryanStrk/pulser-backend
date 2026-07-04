@@ -15,6 +15,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -25,15 +26,18 @@ public class EventoService {
     private final TipoEntradaRepository tipoEntradaRepository;
     private final EventoMapper eventoMapper;
     private final CurrentUserService currentUserService;
+    private final ImageStorageService imageStorageService;
 
     public EventoService(EventoRepository eventoRepository,
                          TipoEntradaRepository tipoEntradaRepository,
                          EventoMapper eventoMapper,
-                         CurrentUserService currentUserService) {
+                         CurrentUserService currentUserService,
+                         ImageStorageService imageStorageService) {
         this.eventoRepository = eventoRepository;
         this.tipoEntradaRepository = tipoEntradaRepository;
         this.eventoMapper = eventoMapper;
         this.currentUserService = currentUserService;
+        this.imageStorageService = imageStorageService;
     }
 
     // ---------------------------------------------------------------- Lecturas
@@ -120,6 +124,23 @@ public class EventoService {
                     "Transicion de estado no permitida: " + evento.getEstado() + " -> " + nuevo);
         }
         evento.setEstado(nuevo);
+
+        List<TipoEntrada> tipos = tipoEntradaRepository.findByEventoId(id);
+        return eventoMapper.toResponse(evento, tipos);
+    }
+
+    @Transactional
+    public EventoResponseDto subirImagen(Long id, MultipartFile imagen) {
+        Evento evento = buscarEvento(id);
+        verificarGestion(evento);
+        verificarNoTerminal(evento);
+
+        // public_id determinista por evento -> overwrite en el mismo asset, sin acumular basura.
+        String publicId = "pulser/eventos/" + evento.getId();
+        // TODO: con public_id fijo + overwrite=true el asset se reemplaza en su sitio; si en el
+        //       futuro cambia la estrategia de nombres, habria que borrar el asset anterior en Cloudinary.
+        String url = imageStorageService.subir(imagen, publicId);
+        evento.setImagenUrl(url);
 
         List<TipoEntrada> tipos = tipoEntradaRepository.findByEventoId(id);
         return eventoMapper.toResponse(evento, tipos);
