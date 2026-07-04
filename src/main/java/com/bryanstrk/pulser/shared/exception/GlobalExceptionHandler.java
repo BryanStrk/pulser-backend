@@ -3,6 +3,9 @@ package com.bryanstrk.pulser.shared.exception;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -24,6 +27,27 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleBusiness(
             BusinessException ex, HttpServletRequest request) {
         return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(BadCredentialsException.class)
+    public ResponseEntity<ErrorResponse> handleBadCredentials(
+            BadCredentialsException ex, HttpServletRequest request) {
+        // Mensaje GENERICO: nunca revelar si el email existe o no.
+        return build(HttpStatus.UNAUTHORIZED, "Credenciales invalidas", request);
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ErrorResponse> handleAccessDenied(
+            AccessDeniedException ex, HttpServletRequest request) {
+        // Cubre @PreAuthorize y las comprobaciones de propiedad lanzadas en los servicios.
+        return build(HttpStatus.FORBIDDEN, "Acceso denegado", request);
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleNotReadable(
+            HttpMessageNotReadableException ex, HttpServletRequest request) {
+        // JSON malformado o valor de enum inexistente (p. ej. un estado invalido en el PATCH).
+        return build(HttpStatus.BAD_REQUEST, "Cuerpo de la peticion invalido o malformado", request);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
