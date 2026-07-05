@@ -7,6 +7,7 @@ import com.bryanstrk.pulser.shared.security.JwtAuthenticationEntryPoint;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.ProviderManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -67,6 +68,10 @@ public class SecurityConfig {
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(PUBLIC_MATCHERS).permitAll()
+                        // mis-eventos NUNCA publico: authenticated ANTES de los GET publicos genericos.
+                        .requestMatchers(HttpMethod.GET, "/eventos/mis-eventos").authenticated()
+                        // Lectura publica SOLO GET y patrones exactos (nunca /eventos/**).
+                        .requestMatchers(HttpMethod.GET, "/eventos", "/eventos/{id}").permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint(authenticationEntryPoint)
