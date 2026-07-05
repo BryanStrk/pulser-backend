@@ -11,6 +11,7 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.time.LocalDateTime;
@@ -45,6 +46,13 @@ public class GlobalExceptionHandler {
             AccessDeniedException ex, HttpServletRequest request) {
         // Cubre @PreAuthorize y las comprobaciones de propiedad lanzadas en los servicios.
         return build(HttpStatus.FORBIDDEN, "Acceso denegado", request);
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleTypeMismatch(
+            MethodArgumentTypeMismatchException ex, HttpServletRequest request) {
+        // Enum invalido en query param (?categoria=CONCIERTOO) o path variable no convertible (/eventos/abc).
+        return build(HttpStatus.BAD_REQUEST, "Parametro invalido: " + ex.getName(), request);
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
