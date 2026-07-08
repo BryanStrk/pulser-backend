@@ -10,6 +10,7 @@ import com.bryanstrk.pulser.evento.TipoEntradaRepository;
 import com.bryanstrk.pulser.shared.exception.BusinessException;
 import com.bryanstrk.pulser.shared.exception.ResourceNotFoundException;
 import com.bryanstrk.pulser.shared.security.CurrentUserService;
+import com.bryanstrk.pulser.shared.security.QrSigningService;
 import com.bryanstrk.pulser.usuario.RolUsuario;
 import com.bryanstrk.pulser.usuario.Usuario;
 import com.bryanstrk.pulser.usuario.UsuarioRepository;
@@ -19,6 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -31,19 +33,25 @@ public class EntradaService {
     private final UsuarioRepository usuarioRepository;
     private final EntradaMapper entradaMapper;
     private final CurrentUserService currentUserService;
+    private final QrSigningService qrSigningService;
+    private final QrImageService qrImageService;
 
     public EntradaService(EntradaRepository entradaRepository,
                           EventoRepository eventoRepository,
                           TipoEntradaRepository tipoEntradaRepository,
                           UsuarioRepository usuarioRepository,
                           EntradaMapper entradaMapper,
-                          CurrentUserService currentUserService) {
+                          CurrentUserService currentUserService,
+                          QrSigningService qrSigningService,
+                          QrImageService qrImageService) {
         this.entradaRepository = entradaRepository;
         this.eventoRepository = eventoRepository;
         this.tipoEntradaRepository = tipoEntradaRepository;
         this.usuarioRepository = usuarioRepository;
         this.entradaMapper = entradaMapper;
         this.currentUserService = currentUserService;
+        this.qrSigningService = qrSigningService;
+        this.qrImageService = qrImageService;
     }
 
     /**
@@ -88,10 +96,13 @@ public class EntradaService {
         entrada.setUsuario(usuarioRepository.getReferenceById(usuario.getId()));
         entrada.setPrecio(precioSnapshot);
         entrada.setEstado(EstadoEntrada.VALIDA);
-        // codigoQr queda null: se rellenara en el bloque de QR.
 
-        // saveAndFlush para materializar la INSERT y poblar fechaCompra (@CreationTimestamp) en la respuesta.
-        Entrada guardada = entradaRepository.saveAndFlush(entrada);
+        // persist asigna el UUID (generador pre-insert) sin flush; con el id ya podemos firmar el QR.
+        Entrada guardada = entradaRepository.save(entrada);
+        guardada.setCodigoQr(qrSigningService.firmar(guardada.getId(), eventoId, Instant.now()));
+        // flush: INSERT unico con el codigoQr incluido y fechaCompra (@CreationTimestamp) poblada.
+        entradaRepository.flush();
+
         return entradaMapper.toResponse(guardada, evento, tipoEntrada);
     }
 
@@ -104,6 +115,24 @@ public class EntradaService {
 
     @Transactional(readOnly = true)
     public EntradaResponseDto obtener(UUID id) {
+        return entradaMapper.toResponse(cargarEntradaAccesible(id));
+    }
+
+    @Transactional(readOnly = true)
+    public byte[] generarQrPng(UUID id) {
+        Entrada entrada = cargarEntradaAccesible(id);
+        if (entrada.getCodigoQr() == null) {
+            // Entradas anteriores al bloque QR: no tienen token que renderizar.
+            throw new ResourceNotFoundException("Esta entrada no tiene QR");
+        }
+        return qrImageService.renderPng(entrada.getCodigoQr());
+    }
+
+    /**
+     * Carga la entrada aplicando el control de acceso: solo comprador o ADMIN;
+     * en otro caso 404 enmascarado (no revelar la existencia de entradas ajenas).
+     */
+    private Entrada cargarEntradaAccesible(UUID id) {
         Entrada entrada = entradaRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Entrada no encontrada"));
 
@@ -111,10 +140,8 @@ public class EntradaService {
         boolean esAdmin = actual.getRol() == RolUsuario.ADMIN;
         boolean esComprador = entrada.getUsuario().getId().equals(actual.getId());
         if (!esAdmin && !esComprador) {
-            // 404 enmascarado: no revelar la existencia de entradas ajenas.
             throw new ResourceNotFoundException("Entrada no encontrada");
         }
-
-        return entradaMapper.toResponse(entrada);
+        return entrada;
     }
 }
