@@ -8,7 +8,7 @@
   <img src="https://img.shields.io/badge/Spring_Security-7.1-6DB33F?style=for-the-badge&logo=springsecurity&logoColor=white" alt="Spring Security 7.1"/>
   <img src="https://img.shields.io/badge/MySQL-8-4479A1?style=for-the-badge&logo=mysql&logoColor=white" alt="MySQL"/>
   <img src="https://img.shields.io/badge/WebSocket-STOMP-010101?style=for-the-badge&logo=socketdotio&logoColor=white" alt="WebSocket STOMP"/>
-  <img src="https://img.shields.io/badge/Tests-91_passing-success?style=for-the-badge&logo=junit5&logoColor=white" alt="Tests"/>
+  <img src="https://img.shields.io/badge/Tests-passing-success?style=for-the-badge&logo=junit5&logoColor=white" alt="Tests"/>
 </p>
 
 ---
@@ -90,13 +90,17 @@ WHERE id = :id AND vendidas < aforo
 
 Si afecta 0 filas, el aforo está agotado → `409`. El predicado `vendidas < aforo` + el bloqueo de fila del propio `UPDATE` serializan las compras concurrentes a nivel de base de datos.
 
-> **Verificado:** dos compras simultáneas del último asiento → una `201`, una `409`. En BD: `vendidas = 1`, `aforo = 1`. Cero overselling.
+> **Verificado:** dos compras simultáneas del último asiento (aforo = 1) → una `201`, una `409`. En base de datos, `vendidas = 1` y `aforo = 1`. Cero overselling.
+
+![Prueba de aforo atómico: vendidas=1, aforo=1 tras dos compras concurrentes](docs/aforo-concurrency.png)
 
 **QR firmado, no cifrado.** El token tiene el formato `base64url(entradaId.eventoId.epochSeconds).base64url(HMAC)`. El contenido es legible a propósito — la seguridad está en que **nadie puede fabricar la firma sin la clave secreta**, no en ocultar los datos.
 
 **Protección de doble uso.** Marcar una entrada como usada es también un `UPDATE` condicional (`... WHERE id = :id AND estado = 'VALIDA'`), de modo que dos validaciones concurrentes del mismo QR resultan en exactamente un `VALIDO` y un `YA_USADA`.
 
-> **Verificado:** dos check-ins simultáneos del mismo QR → en `check_in`, una fila `VALIDO` y una `YA_USADA`. La entrada queda `USADA` con `version` incrementada **una sola vez**.
+> **Verificado:** dos check-ins simultáneos del mismo QR → en la tabla `check_in`, una fila `VALIDO` y una `YA_USADA`. La entrada queda `USADA` con `version` incrementada una sola vez.
+
+![Prueba de doble-uso: una fila VALIDO y una YA_USADA en check_in](docs/checkin-concurrency.png)
 
 **Autenticación del WebSocket.** El handshake STOMP no lleva cabecera `Authorization`; el JWT viaja en el frame `CONNECT` y se valida en un interceptor de canal. Además, la suscripción a `/topic/eventos/{id}/checkins` se **autoriza en el servidor**: solo el organizador de ese evento (o un ADMIN) puede escuchar su feed.
 
@@ -235,7 +239,7 @@ El proyecto incluye una batería completa de tests unitarios (Mockito puro, sin 
 Más allá de los tests unitarios, el directorio `scripts/` contiene scripts de verificación que prueban las garantías de concurrencia **contra la aplicación real**:
 
 ```bash
-# Doble compra del último asiento → exactamente una gana
+# Doble compra del último asiento y validación de QR en puerta
 ./scripts/verify-checkin.sh
 
 # Cliente STOMP de línea de comandos para el feed en vivo
