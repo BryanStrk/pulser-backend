@@ -37,7 +37,10 @@ public class SecurityConfig {
             "/swagger-ui.html",
             "/v3/api-docs/**",
             "/actuator/health",
-            "/error"
+            "/error",
+            // Handshake STOMP: permitAll a nivel HTTP (el upgrade WS no lleva Bearer). La
+            // autenticacion real se aplica en el CONNECT (StompAuthChannelInterceptor).
+            "/ws/**"
     };
 
     private final List<String> allowedOrigins;
