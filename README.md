@@ -3,7 +3,7 @@
 > Plataforma de venta de entradas para eventos con **tickets QR firmados criptográficamente** y **dashboard de control de acceso en tiempo real**.
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Java-21-orange?style=for-the-badge&logo=openjdk&logoColor=white" alt="Java 21"/>
+  <img src="https://img.shields.io/badge/Java-25-orange?style=for-the-badge&logo=openjdk&logoColor=white" alt="Java 25"/>
   <img src="https://img.shields.io/badge/Spring_Boot-4.x-6DB33F?style=for-the-badge&logo=springboot&logoColor=white" alt="Spring Boot 4"/>
   <img src="https://img.shields.io/badge/Spring_Security-7.1-6DB33F?style=for-the-badge&logo=springsecurity&logoColor=white" alt="Spring Security 7.1"/>
   <img src="https://img.shields.io/badge/MySQL-8-4479A1?style=for-the-badge&logo=mysql&logoColor=white" alt="MySQL"/>
@@ -31,7 +31,7 @@ El resultado es un backend que demuestra **atomicidad, condiciones de carrera, c
 
 | Categoría | Tecnología |
 |---|---|
-| **Lenguaje** | Java 21 <sub>(ajusta a 25 si tu `pom.xml` lo indica)</sub> |
+| **Lenguaje** | Java 25 |
 | **Framework** | Spring Boot 4 |
 | **Seguridad** | Spring Security 7.1 · JWT (jjwt 0.12.6) |
 | **Persistencia** | Spring Data JPA · Hibernate 7 · MySQL 8 |
@@ -106,7 +106,7 @@ Si afecta 0 filas, el aforo está agotado → `409`. El predicado `vendidas < af
 
 ### Requisitos de entorno
 
-- **JDK 21** (o la versión que indique tu `pom.xml`)
+- **JDK 25**
 - **MySQL 8** en ejecución
 - Cuenta de **Cloudinary** (para subir imágenes de eventos)
 - Maven — no hace falta instalarlo, el proyecto incluye el wrapper (`./mvnw`)
