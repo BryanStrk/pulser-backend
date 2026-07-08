@@ -16,6 +16,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.access.AccessDeniedException;
 
 import java.time.Instant;
@@ -48,11 +49,14 @@ class CheckInServiceTest {
     private QrSigningService qrSigningService;
     @Mock
     private CurrentUserService currentUserService;
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     private CheckInService checkInService;
 
     private CheckInService service() {
-        return new CheckInService(entradaRepository, checkInRepository, qrSigningService, currentUserService);
+        return new CheckInService(entradaRepository, checkInRepository, qrSigningService,
+                currentUserService, eventPublisher);
     }
 
     // ---------------------------------------------------------------- helpers
