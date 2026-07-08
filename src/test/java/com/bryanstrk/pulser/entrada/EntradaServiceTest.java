@@ -11,6 +11,7 @@ import com.bryanstrk.pulser.evento.TipoEntradaRepository;
 import com.bryanstrk.pulser.shared.exception.BusinessException;
 import com.bryanstrk.pulser.shared.exception.ResourceNotFoundException;
 import com.bryanstrk.pulser.shared.security.CurrentUserService;
+import com.bryanstrk.pulser.shared.security.QrSigningService;
 import com.bryanstrk.pulser.usuario.RolUsuario;
 import com.bryanstrk.pulser.usuario.Usuario;
 import com.bryanstrk.pulser.usuario.UsuarioRepository;
@@ -26,6 +27,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -56,6 +58,10 @@ class EntradaServiceTest {
     private UsuarioRepository usuarioRepository;
     @Mock
     private CurrentUserService currentUserService;
+    @Mock
+    private QrSigningService qrSigningService;
+    @Mock
+    private QrImageService qrImageService;
 
     private EntradaService entradaService;
 
@@ -63,7 +69,8 @@ class EntradaServiceTest {
     void setUp() {
         entradaService = new EntradaService(
                 entradaRepository, eventoRepository, tipoEntradaRepository,
-                usuarioRepository, new EntradaMapper(), currentUserService);
+                usuarioRepository, new EntradaMapper(), currentUserService,
+                qrSigningService, qrImageService);
     }
 
     // ---------------------------------------------------------------- helpers
@@ -118,24 +125,27 @@ class EntradaServiceTest {
         when(eventoRepository.getReferenceById(EVENTO_ID)).thenReturn(evento);
         when(tipoEntradaRepository.getReferenceById(TIPO_ID)).thenReturn(tipo);
         when(usuarioRepository.getReferenceById(1L)).thenReturn(comprador);
-        when(entradaRepository.saveAndFlush(any(Entrada.class))).thenAnswer(invocation -> {
+        when(entradaRepository.save(any(Entrada.class))).thenAnswer(invocation -> {
             Entrada e = invocation.getArgument(0);
             e.setId(UUID.randomUUID());
             e.setFechaCompra(LocalDateTime.now());
             return e;
         });
+        when(qrSigningService.firmar(any(UUID.class), eq(EVENTO_ID), any(Instant.class)))
+                .thenReturn("payload.firma");
 
         EntradaResponseDto response = entradaService.comprar(EVENTO_ID, new CrearEntradaRequestDto(TIPO_ID));
 
         ArgumentCaptor<Entrada> captor = ArgumentCaptor.forClass(Entrada.class);
-        verify(entradaRepository).saveAndFlush(captor.capture());
+        verify(entradaRepository).save(captor.capture());
+        verify(entradaRepository).flush();
         assertThat(captor.getValue().getEstado()).isEqualTo(EstadoEntrada.VALIDA);
         assertThat(captor.getValue().getPrecio()).isEqualByComparingTo("30.00");
 
         assertThat(response.estado()).isEqualTo(EstadoEntrada.VALIDA);
         assertThat(response.precio()).isEqualByComparingTo("30.00");
         assertThat(response.tipoEntradaNombre()).isEqualTo("General");
-        assertThat(response.codigoQr()).isNull();
+        assertThat(response.codigoQr()).isEqualTo("payload.firma");
         assertThat(response.evento().id()).isEqualTo(EVENTO_ID);
     }
 
@@ -199,7 +209,7 @@ class EntradaServiceTest {
         assertThatThrownBy(() -> entradaService.comprar(EVENTO_ID, new CrearEntradaRequestDto(TIPO_ID)))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("agotad");
-        verify(entradaRepository, never()).saveAndFlush(any());
+        verify(entradaRepository, never()).save(any());
     }
 
     // ---------------------------------------------------------------- mis-entradas
@@ -252,6 +262,56 @@ class EntradaServiceTest {
 
         assertThatThrownBy(() -> entradaService.obtener(id))
                 .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    // ---------------------------------------------------------------- generarQrPng
+
+    @Test
+    void generarQrPng_comoComprador_conCodigoQr_ok() {
+        Usuario comprador = usuario(1L, RolUsuario.ASISTENTE);
+        Evento evento = evento(EVENTO_ID, EstadoEvento.PUBLICADO, futuro());
+        TipoEntrada tipo = tipoEntrada(evento, new BigDecimal("30.00"));
+        UUID id = UUID.randomUUID();
+        Entrada entrada = entrada(id, comprador, evento, tipo);
+        entrada.setCodigoQr("payload.firma");
+        byte[] png = {1, 2, 3};
+        when(entradaRepository.findById(id)).thenReturn(Optional.of(entrada));
+        when(currentUserService.getCurrentUsuario()).thenReturn(comprador);
+        when(qrImageService.renderPng("payload.firma")).thenReturn(png);
+
+        assertThat(entradaService.generarQrPng(id)).isEqualTo(png);
+    }
+
+    @Test
+    void generarQrPng_sinCodigoQr_lanza404() {
+        Usuario comprador = usuario(1L, RolUsuario.ASISTENTE);
+        Evento evento = evento(EVENTO_ID, EstadoEvento.PUBLICADO, futuro());
+        TipoEntrada tipo = tipoEntrada(evento, new BigDecimal("30.00"));
+        UUID id = UUID.randomUUID();
+        Entrada entrada = entrada(id, comprador, evento, tipo); // codigoQr null (entrada pre-QR)
+        when(entradaRepository.findById(id)).thenReturn(Optional.of(entrada));
+        when(currentUserService.getCurrentUsuario()).thenReturn(comprador);
+
+        assertThatThrownBy(() -> entradaService.generarQrPng(id))
+                .isInstanceOf(ResourceNotFoundException.class);
+        verify(qrImageService, never()).renderPng(any());
+    }
+
+    @Test
+    void generarQrPng_deOtroUsuario_lanza404Enmascarado() {
+        Usuario comprador = usuario(1L, RolUsuario.ASISTENTE);
+        Usuario tercero = usuario(2L, RolUsuario.ASISTENTE);
+        Evento evento = evento(EVENTO_ID, EstadoEvento.PUBLICADO, futuro());
+        TipoEntrada tipo = tipoEntrada(evento, new BigDecimal("30.00"));
+        UUID id = UUID.randomUUID();
+        Entrada entrada = entrada(id, comprador, evento, tipo);
+        entrada.setCodigoQr("payload.firma");
+        when(entradaRepository.findById(id)).thenReturn(Optional.of(entrada));
+        when(currentUserService.getCurrentUsuario()).thenReturn(tercero);
+
+        assertThatThrownBy(() -> entradaService.generarQrPng(id))
+                .isInstanceOf(ResourceNotFoundException.class);
+        verify(qrImageService, never()).renderPng(any());
     }
 
     private Entrada entrada(UUID id, Usuario comprador, Evento evento, TipoEntrada tipo) {
