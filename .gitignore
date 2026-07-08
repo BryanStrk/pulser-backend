@@ -34,3 +34,4 @@ build/
 graphify-out/
 .claude/settings.local.json
 scripts/node_modules/
+scripts/node_modules/
