@@ -1,6 +1,8 @@
 package com.bryanstrk.pulser.checkin;
 
+import com.bryanstrk.pulser.checkin.dto.CheckInFeedDto;
 import com.bryanstrk.pulser.checkin.dto.CheckInResponseDto;
+import com.bryanstrk.pulser.checkin.event.CheckInRegistradoEvent;
 import com.bryanstrk.pulser.entrada.Entrada;
 import com.bryanstrk.pulser.entrada.EntradaRepository;
 import com.bryanstrk.pulser.entrada.EstadoEntrada;
@@ -10,6 +12,7 @@ import com.bryanstrk.pulser.shared.security.QrPayload;
 import com.bryanstrk.pulser.shared.security.QrSigningService;
 import com.bryanstrk.pulser.usuario.RolUsuario;
 import com.bryanstrk.pulser.usuario.Usuario;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,15 +38,18 @@ public class CheckInService {
     private final CheckInRepository checkInRepository;
     private final QrSigningService qrSigningService;
     private final CurrentUserService currentUserService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public CheckInService(EntradaRepository entradaRepository,
                           CheckInRepository checkInRepository,
                           QrSigningService qrSigningService,
-                          CurrentUserService currentUserService) {
+                          CurrentUserService currentUserService,
+                          ApplicationEventPublisher eventPublisher) {
         this.entradaRepository = entradaRepository;
         this.checkInRepository = checkInRepository;
         this.qrSigningService = qrSigningService;
         this.currentUserService = currentUserService;
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional
@@ -124,9 +130,13 @@ public class CheckInService {
         checkIn.setPuerta(puerta);
         checkInRepository.save(checkIn);
 
-        // === PUNTO DE EMISION WEBSOCKET (bloque siguiente) ===
-        // Tras registrar el CheckIn, aqui se emitira el evento al feed del evento 'evento.getId()'.
-        // No hace falta refactor: el resultado y los datos ya estan resueltos en este punto.
+        // === EMISION WEBSOCKET (post-commit) ===
+        // Publicamos un evento de dominio con un snapshot inmutable. Un listener AFTER_COMMIT lo
+        // empujara al feed del evento SOLO si esta transaccion commitea (nunca un check-in fantasma
+        // en el dashboard si hay rollback). CheckInService no conoce el WS: solo publica el evento.
+        CheckInFeedDto feed = new CheckInFeedDto(
+                resultado, entradaId, nombreEvento, tipoEntradaNombre, puerta, LocalDateTime.now());
+        eventPublisher.publishEvent(new CheckInRegistradoEvent(evento.getId(), feed));
 
         return new CheckInResponseDto(resultado, entradaId, mensaje, nombreEvento, tipoEntradaNombre);
     }
