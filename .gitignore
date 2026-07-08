@@ -33,3 +33,4 @@ build/
 .vscode/
 graphify-out/
 .claude/settings.local.json
+scripts/node_modules/
