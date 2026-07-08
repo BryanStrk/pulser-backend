@@ -1,8 +1,6 @@
 package com.bryanstrk.pulser.shared.websocket;
 
-import com.bryanstrk.pulser.evento.EventoRepository;
 import com.bryanstrk.pulser.shared.security.JwtService;
-import com.bryanstrk.pulser.usuario.RolUsuario;
 import com.bryanstrk.pulser.usuario.Usuario;
 import com.bryanstrk.pulser.usuario.UsuarioRepository;
 import io.jsonwebtoken.Claims;
@@ -45,14 +43,14 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
 
     private final JwtService jwtService;
     private final UsuarioRepository usuarioRepository;
-    private final EventoRepository eventoRepository;
+    private final SubscriptionAuthorizationService subscriptionAuthorizationService;
 
     public StompAuthChannelInterceptor(JwtService jwtService,
                                        UsuarioRepository usuarioRepository,
-                                       EventoRepository eventoRepository) {
+                                       SubscriptionAuthorizationService subscriptionAuthorizationService) {
         this.jwtService = jwtService;
         this.usuarioRepository = usuarioRepository;
-        this.eventoRepository = eventoRepository;
+        this.subscriptionAuthorizationService = subscriptionAuthorizationService;
     }
 
     @Override
@@ -113,9 +111,9 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
             throw new AccessDeniedException("Destino de suscripcion no permitido");
         }
 
-        boolean esAdmin = wsUser.rol() == RolUsuario.ADMIN;
-        boolean esOrganizador = eventoRepository.existsByIdAndOrganizador_Id(eventoId, wsUser.id());
-        if (!esAdmin && !esOrganizador) {
+        // La comprobacion de ownership toca BD -> se delega al service transaccional (el hilo del
+        // canal no trae tx). El parseo del destino se queda aqui.
+        if (!subscriptionAuthorizationService.puedeSuscribirse(eventoId, wsUser)) {
             throw new AccessDeniedException("No puedes suscribirte al feed de este evento");
         }
     }
