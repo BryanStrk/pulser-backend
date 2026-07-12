@@ -18,6 +18,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 public class EventoService {
@@ -55,7 +57,7 @@ public class EventoService {
                 .and(EventoSpecifications.conCiudad(ciudad))
                 .and(EventoSpecifications.nombreContiene(texto));
 
-        return eventoRepository.findAll(spec, pageable).map(eventoMapper::toResumen);
+        return aResumenConOcupacion(eventoRepository.findAll(spec, pageable));
     }
 
     /**
@@ -74,7 +76,28 @@ public class EventoService {
                 .and(EventoSpecifications.conCiudad(ciudad))
                 .and(EventoSpecifications.nombreContiene(texto));
 
-        return eventoRepository.findAll(spec, pageable).map(eventoMapper::toResumen);
+        return aResumenConOcupacion(eventoRepository.findAll(spec, pageable));
+    }
+
+    /**
+     * Enriquece una pagina de eventos con su ocupacion agregada (aforo/vendidas) usando UNA sola
+     * query batch para toda la pagina (sin N+1). Los eventos sin tipos de entrada no aparecen en el
+     * agregado -> se resuelven a 0/0.
+     */
+    private Page<EventoResumenDto> aResumenConOcupacion(Page<Evento> pagina) {
+        List<Long> ids = pagina.getContent().stream().map(Evento::getId).toList();
+
+        Map<Long, OcupacionEventoProjection> ocupacionPorEvento = ids.isEmpty()
+                ? Map.of()
+                : tipoEntradaRepository.sumarOcupacionPorEvento(ids).stream()
+                        .collect(Collectors.toMap(OcupacionEventoProjection::getEventoId, o -> o));
+
+        return pagina.map(evento -> {
+            OcupacionEventoProjection ocupacion = ocupacionPorEvento.get(evento.getId());
+            long aforoTotal = ocupacion == null ? 0L : ocupacion.getAforoTotal();
+            long entradasVendidas = ocupacion == null ? 0L : ocupacion.getEntradasVendidas();
+            return eventoMapper.toResumen(evento, aforoTotal, entradasVendidas);
+        });
     }
 
     /**

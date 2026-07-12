@@ -7,6 +7,8 @@ import java.time.LocalDateTime;
 
 /**
  * Item de listado (sin descripcion ni tipos de entrada, para respuestas paginadas ligeras).
+ * 'aforoTotal' y 'entradasVendidas' son la ocupacion agregada de sus tipos de entrada (0/0 si
+ * el evento no tiene ninguno), para la barra de aforo del frontend.
  */
 public record EventoResumenDto(
         Long id,
@@ -15,6 +17,8 @@ public record EventoResumenDto(
         LocalDateTime fechaEvento,
         CategoriaEvento categoria,
         EstadoEvento estado,
-        String imagenUrl
+        String imagenUrl,
+        long aforoTotal,
+        long entradasVendidas
 ) {
 }

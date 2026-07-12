@@ -44,7 +44,11 @@ public class EventoMapper {
         // estado y organizador no se modifican en la edicion de datos.
     }
 
-    public EventoResumenDto toResumen(Evento evento) {
+    /**
+     * Item de listado con la ocupacion agregada ya resuelta por el llamante (0/0 si el evento no
+     * tiene tipos de entrada).
+     */
+    public EventoResumenDto toResumen(Evento evento, long aforoTotal, long entradasVendidas) {
         return new EventoResumenDto(
                 evento.getId(),
                 evento.getNombre(),
@@ -52,7 +56,9 @@ public class EventoMapper {
                 evento.getFechaEvento(),
                 evento.getCategoria(),
                 evento.getEstado(),
-                evento.getImagenUrl()
+                evento.getImagenUrl(),
+                aforoTotal,
+                entradasVendidas
         );
     }
 

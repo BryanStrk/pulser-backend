@@ -3,6 +3,7 @@ package com.bryanstrk.pulser.evento;
 import com.bryanstrk.pulser.evento.dto.CambiarEstadoDto;
 import com.bryanstrk.pulser.evento.dto.EventoRequestDto;
 import com.bryanstrk.pulser.evento.dto.EventoResponseDto;
+import com.bryanstrk.pulser.evento.dto.EventoResumenDto;
 import com.bryanstrk.pulser.shared.exception.BusinessException;
 import com.bryanstrk.pulser.shared.exception.ResourceNotFoundException;
 import com.bryanstrk.pulser.shared.security.CurrentUserService;
@@ -15,6 +16,11 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -28,6 +34,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -82,6 +89,97 @@ class EventoServiceTest {
         return new EventoRequestDto(
                 nombre, "desc", "WiZink", "Madrid",
                 LocalDateTime.of(2027, 5, 1, 21, 0), CategoriaEvento.CONCIERTO, null);
+    }
+
+    private OcupacionEventoProjection ocupacion(Long eventoId, long aforo, long vendidas) {
+        OcupacionEventoProjection proj = mock(OcupacionEventoProjection.class);
+        when(proj.getEventoId()).thenReturn(eventoId);
+        when(proj.getAforoTotal()).thenReturn(aforo);
+        when(proj.getEntradasVendidas()).thenReturn(vendidas);
+        return proj;
+    }
+
+    // ---------------------------------------------------------------- listados (ocupacion)
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void listarPublicos_enriquecePaginaConOcupacionEnUnaQueryBatch() {
+        Usuario organizador = usuario(1L, RolUsuario.ORGANIZADOR);
+        Evento a = evento(10L, EstadoEvento.PUBLICADO, organizador);
+        Evento b = evento(20L, EstadoEvento.PUBLICADO, organizador);
+        Pageable pageable = PageRequest.of(0, 20);
+
+        // Proyecciones creadas ANTES del stub: crearlas dentro de thenReturn(...) anida stubbing.
+        List<OcupacionEventoProjection> agregado = List.of(
+                ocupacion(10L, 100L, 40L), ocupacion(20L, 50L, 50L));
+        when(eventoRepository.findAll(any(Specification.class), eq(pageable)))
+                .thenReturn(new PageImpl<>(List.of(a, b), pageable, 2));
+        when(tipoEntradaRepository.sumarOcupacionPorEvento(List.of(10L, 20L)))
+                .thenReturn(agregado);
+
+        Page<EventoResumenDto> page = eventoService.listarPublicos(null, null, null, pageable);
+
+        assertThat(page.getContent()).hasSize(2);
+        assertThat(page.getContent().get(0).id()).isEqualTo(10L);
+        assertThat(page.getContent().get(0).aforoTotal()).isEqualTo(100L);
+        assertThat(page.getContent().get(0).entradasVendidas()).isEqualTo(40L);
+        assertThat(page.getContent().get(1).aforoTotal()).isEqualTo(50L);
+        assertThat(page.getContent().get(1).entradasVendidas()).isEqualTo(50L);
+        // una sola query batch para toda la pagina (sin N+1)
+        verify(tipoEntradaRepository).sumarOcupacionPorEvento(List.of(10L, 20L));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void listarPublicos_eventoSinTipos_devuelveCeroCero() {
+        Usuario organizador = usuario(1L, RolUsuario.ORGANIZADOR);
+        Evento sinTipos = evento(10L, EstadoEvento.PUBLICADO, organizador);
+        Pageable pageable = PageRequest.of(0, 20);
+
+        when(eventoRepository.findAll(any(Specification.class), eq(pageable)))
+                .thenReturn(new PageImpl<>(List.of(sinTipos), pageable, 1));
+        // el evento no aparece en el agregado (no tiene tipos de entrada)
+        when(tipoEntradaRepository.sumarOcupacionPorEvento(List.of(10L)))
+                .thenReturn(List.of());
+
+        Page<EventoResumenDto> page = eventoService.listarPublicos(null, null, null, pageable);
+
+        assertThat(page.getContent().get(0).aforoTotal()).isEqualTo(0L);
+        assertThat(page.getContent().get(0).entradasVendidas()).isEqualTo(0L);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void listarPublicos_paginaVacia_noConsultaOcupacion() {
+        Pageable pageable = PageRequest.of(0, 20);
+        when(eventoRepository.findAll(any(Specification.class), eq(pageable)))
+                .thenReturn(new PageImpl<>(List.of(), pageable, 0));
+
+        Page<EventoResumenDto> page = eventoService.listarPublicos(null, null, null, pageable);
+
+        assertThat(page.getContent()).isEmpty();
+        // sin ids -> no se dispara la query batch (evita IN vacio)
+        verify(tipoEntradaRepository, never()).sumarOcupacionPorEvento(any());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void listarMisEventos_tambienEnriqueceConOcupacion() {
+        Usuario organizador = usuario(1L, RolUsuario.ORGANIZADOR);
+        Evento propio = evento(10L, EstadoEvento.BORRADOR, organizador);
+        Pageable pageable = PageRequest.of(0, 20);
+
+        List<OcupacionEventoProjection> agregado = List.of(ocupacion(10L, 200L, 10L));
+        when(currentUserService.getCurrentUsuario()).thenReturn(organizador);
+        when(eventoRepository.findAll(any(Specification.class), eq(pageable)))
+                .thenReturn(new PageImpl<>(List.of(propio), pageable, 1));
+        when(tipoEntradaRepository.sumarOcupacionPorEvento(List.of(10L)))
+                .thenReturn(agregado);
+
+        Page<EventoResumenDto> page = eventoService.listarMisEventos(null, null, null, pageable);
+
+        assertThat(page.getContent().get(0).aforoTotal()).isEqualTo(200L);
+        assertThat(page.getContent().get(0).entradasVendidas()).isEqualTo(10L);
     }
 
     // ---------------------------------------------------------------- obtener
