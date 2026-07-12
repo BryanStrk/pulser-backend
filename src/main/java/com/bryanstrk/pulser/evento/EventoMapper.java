@@ -27,7 +27,7 @@ public class EventoMapper {
         evento.setCiudad(dto.ciudad());
         evento.setFechaEvento(dto.fechaEvento());
         evento.setCategoria(dto.categoria());
-        evento.setImagenUrl(dto.imagenUrl());
+        // La imagen NO se escribe aqui: nace sin imagen y solo POST /eventos/{id}/imagen la fija.
         evento.setEstado(EstadoEvento.BORRADOR);
         evento.setOrganizador(organizador);
         return evento;
@@ -40,7 +40,7 @@ public class EventoMapper {
         evento.setCiudad(dto.ciudad());
         evento.setFechaEvento(dto.fechaEvento());
         evento.setCategoria(dto.categoria());
-        evento.setImagenUrl(dto.imagenUrl());
+        // imagenUrl NO se toca aqui: su unico canal de escritura es POST /eventos/{id}/imagen.
         // estado y organizador no se modifican en la edicion de datos.
     }
 

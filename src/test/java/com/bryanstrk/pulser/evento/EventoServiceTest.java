@@ -88,7 +88,7 @@ class EventoServiceTest {
     private EventoRequestDto request(String nombre) {
         return new EventoRequestDto(
                 nombre, "desc", "WiZink", "Madrid",
-                LocalDateTime.of(2027, 5, 1, 21, 0), CategoriaEvento.CONCIERTO, null);
+                LocalDateTime.of(2027, 5, 1, 21, 0), CategoriaEvento.CONCIERTO);
     }
 
     private OcupacionEventoProjection ocupacion(Long eventoId, long aforo, long vendidas) {
@@ -276,6 +276,24 @@ class EventoServiceTest {
         EventoResponseDto response = eventoService.actualizar(10L, request("Editado"));
 
         assertThat(response.nombre()).isEqualTo("Editado");
+    }
+
+    @Test
+    void actualizar_noPisaLaImagenExistente() {
+        // Regresion: la imagen tiene un unico canal de escritura (POST /eventos/{id}/imagen).
+        // Editar los datos del evento (que ya no transporta imagenUrl) no debe alterar la URL.
+        Usuario dueno = usuario(1L, RolUsuario.ORGANIZADOR);
+        Evento conImagen = evento(10L, EstadoEvento.BORRADOR, dueno);
+        conImagen.setImagenUrl("https://res.cloudinary.com/pulser/eventos/10.jpg");
+        when(eventoRepository.findById(10L)).thenReturn(Optional.of(conImagen));
+        when(currentUserService.getCurrentUsuario()).thenReturn(dueno);
+        when(tipoEntradaRepository.findByEventoId(10L)).thenReturn(List.of());
+
+        EventoResponseDto response = eventoService.actualizar(10L, request("Editado"));
+
+        assertThat(response.nombre()).isEqualTo("Editado");
+        assertThat(response.imagenUrl()).isEqualTo("https://res.cloudinary.com/pulser/eventos/10.jpg");
+        assertThat(conImagen.getImagenUrl()).isEqualTo("https://res.cloudinary.com/pulser/eventos/10.jpg");
     }
 
     @Test

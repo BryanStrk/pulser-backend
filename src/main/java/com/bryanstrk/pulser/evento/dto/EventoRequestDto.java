@@ -10,6 +10,9 @@ import java.time.LocalDateTime;
 /**
  * Alta y edicion de un evento. NO incluye estado (nace BORRADOR; se cambia via PATCH)
  * ni organizador (se asigna desde el usuario autenticado).
+ *
+ * La imagen NO viaja en este DTO: tiene un unico canal de escritura, POST /eventos/{id}/imagen.
+ * Incluirla aqui permitiria que una edicion sin imagen la pisara con null.
  */
 public record EventoRequestDto(
 
@@ -29,8 +32,6 @@ public record EventoRequestDto(
         LocalDateTime fechaEvento,
 
         @NotNull
-        CategoriaEvento categoria,
-
-        String imagenUrl
+        CategoriaEvento categoria
 ) {
 }
